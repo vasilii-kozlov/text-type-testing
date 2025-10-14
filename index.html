@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Input Testing Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .field-container {
+            margin-bottom: 30px;
+        }
+        .field-header {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        textarea, input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 150px;
+            resize: vertical;
+        }
+        .voice-container {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+        .voice-container input[type="text"] {
+            flex: 1;
+        }
+        .voice-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            height: 42px;
+        }
+        .voice-btn:hover {
+            background-color: #45a049;
+        }
+        .voice-btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .voice-btn.listening {
+            background-color: #ff4444;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        .error-message {
+            color: red;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Text Input Testing Page</h1>
+    
+    <div class="field-container">
+        <div class="field-header">Plain HTML Textarea</div>
+        <textarea id="htmlTextarea" placeholder="Enter your HTML content here..."></textarea>
+    </div>
+    
+    <div class="field-container">
+        <div class="field-header">Voice-to-Text Input Field</div>
+        <div class="voice-container">
+            <input type="text" id="voiceInput" placeholder="Click the microphone to speak or type manually...">
+            <button id="voiceBtn" class="voice-btn">🎤</button>
+        </div>
+        <div id="voiceError" class="error-message" style="display: none;"></div>
+    </div>
+
+    <script>
+        class VoiceToText {
+            constructor() {
+                this.recognition = null;
+                this.isListening = false;
+                this.voiceBtn = document.getElementById('voiceBtn');
+                this.voiceInput = document.getElementById('voiceInput');
+                this.errorDiv = document.getElementById('voiceError');
+                
+                this.init();
+            }
+            
+            init() {
+                // Check if browser supports speech recognition
+                if ('webkitSpeechRecognition' in window) {
+                    this.recognition = new webkitSpeechRecognition();
+                } else if ('SpeechRecognition' in window) {
+                    this.recognition = new SpeechRecognition();
+                } else {
+                    this.showError('Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.');
+                    this.voiceBtn.disabled = true;
+                    return;
+                }
+                
+                this.setupRecognition();
+                this.setupEventListeners();
+            }
+            
+            setupRecognition() {
+                this.recognition.continuous = false;
+                this.recognition.interimResults = false;
+                this.recognition.lang = 'en-US';
+                
+                this.recognition.onstart = () => {
+                    this.isListening = true;
+                    this.voiceBtn.textContent = '🔴';
+                    this.voiceBtn.classList.add('listening');
+                    this.hideError();
+                };
+                
+                this.recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    this.voiceInput.value = transcript;
+                };
+                
+                this.recognition.onerror = (event) => {
+                    this.showError(`Speech recognition error: ${event.error}`);
+                    this.stopListening();
+                };
+                
+                this.recognition.onend = () => {
+                    this.stopListening();
+                };
+            }
+            
+            setupEventListeners() {
+                this.voiceBtn.addEventListener('click', () => {
+                    if (this.isListening) {
+                        this.recognition.stop();
+                    } else {
+                        this.startListening();
+                    }
+                });
+            }
+            
+            startListening() {
+                try {
+                    this.recognition.start();
+                } catch (error) {
+                    this.showError('Could not start speech recognition. Please try again.');
+                }
+            }
+            
+            stopListening() {
+                this.isListening = false;
+                this.voiceBtn.textContent = '🎤';
+                this.voiceBtn.classList.remove('listening');
+            }
+            
+            showError(message) {
+                this.errorDiv.textContent = message;
+                this.errorDiv.style.display = 'block';
+            }
+            
+            hideError() {
+                this.errorDiv.style.display = 'none';
+            }
+        }
+        
+        // Initialize voice-to-text functionality when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new VoiceToText();
+        });
+    </script>
+</body>
+</html>
