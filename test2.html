@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice-to-Text Testing Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .field-container {
+            margin-bottom: 30px;
+        }
+        .field-header {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #333;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+            resize: none;
+            min-height: 60px;
+            overflow: hidden;
+        }
+        .voice-container {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+        .voice-container textarea {
+            flex: 1;
+        }
+        .voice-btn {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            min-height: 42px;
+            white-space: nowrap;
+        }
+        .voice-btn:hover {
+            background-color: #45a049;
+        }
+        .voice-btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .voice-btn.listening {
+            background-color: #ff4444;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        .error-message {
+            color: red;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .success-message {
+            color: green;
+            font-size: 12px;
+            margin-top: 5px;
+        }
+        .permission-info {
+            background-color: #e3f2fd;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Voice-to-Text Testing Page</h1>
+    
+    <div class="permission-info">
+        <strong>🎤 Microphone Permission:</strong> 
+        <span id="permissionStatus">Checking...</span>
+    </div>
+    
+    <div class="field-container">
+        <div class="field-header">Standard Textarea</div>
+        <textarea id="standardTextarea" placeholder="Type your text here..."></textarea>
+    </div>
+    
+    <div class="field-container">
+        <div class="field-header">Voice-to-Text Textarea (Auto-Resizing)</div>
+        <div class="voice-container">
+            <textarea id="voiceTextarea" placeholder="Click the microphone to speak or type manually..."></textarea>
+            <button id="voiceBtn" class="voice-btn">🎤 Start</button>
+        </div>
+        <div id="voiceMessage" style="display: none;"></div>
+    </div>
+
+    <div class="field-container">
+        <div class="field-header">Multi-line Notes Textarea</div>
+        <textarea id="notesTextarea" placeholder="Enter your notes here..."></textarea>
+    </div>
+
+    <div class="field-container">
+        <div class="field-header">Comments Textarea with Voice</div>
+        <div class="voice-container">
+            <textarea id="commentsTextarea" placeholder="Type or speak your comments..."></textarea>
+            <button id="voiceBtn2" class="voice-btn">🎤 Start</button>
+        </div>
+        <div id="voiceMessage2" style="display: none;"></div>
+    </div>
+
+    <script>
+        class AutoResizeTextarea {
+            constructor(textarea) {
+                this.textarea = textarea;
+                this.init();
+            }
+            
+            init() {
+                this.textarea.addEventListener('input', () => this.resize());
+                this.resize();
+            }
+            
+            resize() {
+                this.textarea.style.height = 'auto';
+                this.textarea.style.height = Math.max(60, this.textarea.scrollHeight) + 'px';
+            }
+        }
+
+        class VoiceToText {
+            constructor(textareaId, buttonId, messageId) {
+                this.textarea = document.getElementById(textareaId);
+                this.button = document.getElementById(buttonId);
+                this.messageDiv = document.getElementById(messageId);
+                this.recognition = null;
+                this.isListening = false;
+                this.permissionGranted = false;
+                this.speechBuffer = '';
+                
+                this.init();
+            }
+            
+            async init() {
+                await this.checkPermissions();
+                this.setupRecognition();
+                this.setupEventListeners();
+            }
+            
+            async checkPermissions() {
+                try {
+                    if (navigator.permissions && navigator.permissions.query) {
+                        const result = await navigator.permissions.query({name: 'microphone'});
+                        this.permissionGranted = result.state === 'granted';
+                        
+                        result.addEventListener('change', () => {
+                            this.permissionGranted = result.state === 'granted';
+                            this.updatePermissionStatus();
+                        });
+                    }
+                } catch (error) {
+                    console.log('Permission API not available');
+                }
+                this.updatePermissionStatus();
+            }
+            
+            updatePermissionStatus() {
+                const statusSpan = document.getElementById('permissionStatus');
+                if (statusSpan) {
+                    if (this.permissionGranted) {
+                        statusSpan.textContent = 'Granted ✅';
+                        statusSpan.style.color = 'green';
+                    } else {
+                        statusSpan.textContent = 'Will be requested when needed';
+                        statusSpan.style.color = 'orange';
+                    }
+                }
+            }
+            
+            setupRecognition() {
+                if ('webkitSpeechRecognition' in window) {
+                    this.recognition = new webkitSpeechRecognition();
+                } else if ('SpeechRecognition' in window) {
+                    this.recognition = new SpeechRecognition();
+                } else {
+                    this.showMessage('Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.', 'error');
+                    this.button.disabled = true;
+                    return;
+                }
+                
+                this.recognition.continuous = false;
+                this.recognition.interimResults = true;
+                this.recognition.lang = 'en-US';
+                
+                this.recognition.onstart = () => {
+                    this.isListening = true;
+                    this.speechBuffer = '';
+                    this.button.textContent = '🔴 Stop';
+                    this.button.classList.add('listening');
+                    this.showMessage('Listening... Speak now!', 'success');
+                    this.permissionGranted = true;
+                    this.updatePermissionStatus();
+                };
+                
+                this.recognition.onresult = (event) => {
+                    let finalTranscript = '';
+                    for (let i = 0; i < event.results.length; i++) {
+                        if (event.results[i].isFinal) {
+                            finalTranscript += event.results[i][0].transcript;
+                        }
+                    }
+                    
+                    if (finalTranscript) {
+                        this.speechBuffer += finalTranscript;
+                    }
+                };
+                
+                this.recognition.onerror = (event) => {
+                    let errorMessage = 'Speech recognition error';
+                    
+                    switch(event.error) {
+                        case 'not-allowed':
+                            errorMessage = 'Microphone access denied. Please allow microphone access and try again.';
+                            break;
+                        case 'no-speech':
+                            errorMessage = 'No speech detected. Please try again.';
+                            break;
+                        case 'audio-capture':
+                            errorMessage = 'No microphone found. Please check your microphone.';
+                            break;
+                        case 'network':
+                            errorMessage = 'Network error occurred. Please check your connection.';
+                            break;
+                        default:
+                            errorMessage = `Speech recognition error: ${event.error}`;
+                    }
+                    
+                    this.showMessage(errorMessage, 'error');
+                    this.stopListening();
+                };
+                
+                this.recognition.onend = () => {
+                    if (this.speechBuffer.trim()) {
+                        this.insertTextAtCursor(this.speechBuffer);
+                        this.speechBuffer = '';
+                    }
+                    this.stopListening();
+                };
+            }
+            
+            setupEventListeners() {
+                this.button.addEventListener('click', () => {
+                    if (this.isListening) {
+                        this.recognition.stop();
+                    } else {
+                        this.startListening();
+                    }
+                });
+            }
+            
+            startListening() {
+                try {
+                    this.recognition.start();
+                } catch (error) {
+                    this.showMessage('Could not start speech recognition. Please try again.', 'error');
+                }
+            }
+            
+            stopListening() {
+                this.isListening = false;
+                this.button.textContent = '🎤 Start';
+                this.button.classList.remove('listening');
+                this.hideMessage();
+            }
+            
+            insertTextAtCursor(text) {
+                const start = this.textarea.selectionStart;
+                const end = this.textarea.selectionEnd;
+                const currentValue = this.textarea.value;
+                
+                const newValue = currentValue.substring(0, start) + text + currentValue.substring(end);
+                this.textarea.value = newValue;
+                
+                const newCursorPosition = start + text.length;
+                this.textarea.setSelectionRange(newCursorPosition, newCursorPosition);
+                
+                this.textarea.focus();
+                this.textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+            
+            showMessage(message, type) {
+                this.messageDiv.textContent = message;
+                this.messageDiv.className = type === 'error' ? 'error-message' : 'success-message';
+                this.messageDiv.style.display = 'block';
+            }
+            
+            hideMessage() {
+                this.messageDiv.style.display = 'none';
+            }
+        }
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const textareas = document.querySelectorAll('textarea');
+            textareas.forEach(textarea => {
+                new AutoResizeTextarea(textarea);
+            });
+            
+            new VoiceToText('voiceTextarea', 'voiceBtn', 'voiceMessage');
+            new VoiceToText('commentsTextarea', 'voiceBtn2', 'voiceMessage2');
+        });
+    </script>
+</body>
+</html>
