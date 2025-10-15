@@ -109,6 +109,24 @@
     </div>
 
     <script>
+        
+        class AutoResizeTextarea {
+            constructor(textarea) {
+                this.textarea = textarea;
+                this.init();
+            }
+            
+            init() {
+                this.textarea.addEventListener('input', () => this.resize());
+                this.resize();
+            }
+            
+            resize() {
+                this.textarea.style.height = 'auto';
+                this.textarea.style.height = Math.max(60, this.textarea.scrollHeight) + 'px';
+            }
+        }
+        
         class VoiceToText {
             constructor(textareaId, buttonId, messageId) {
                 this.textarea = document.getElementById(textareaId);
