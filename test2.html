@@ -109,203 +109,52 @@
     </div>
 
     <script>
-        class AutoResizeTextarea {
-            constructor(textarea) {
-                this.textarea = textarea;
-                this.init();
-            }
-            
-            init() {
-                this.textarea.addEventListener('input', () => this.resize());
-                this.resize();
-            }
-            
-            resize() {
-                this.textarea.style.height = 'auto';
-                this.textarea.style.height = Math.max(60, this.textarea.scrollHeight) + 'px';
-            }
-        }
-
         class VoiceToText {
             constructor(textareaId, buttonId, messageId) {
                 this.textarea = document.getElementById(textareaId);
                 this.button = document.getElementById(buttonId);
                 this.messageDiv = document.getElementById(messageId);
-                this.recognition = null;
                 this.isListening = false;
-                this.permissionGranted = false;
                 this.speechBuffer = '';
-                
-                this.init();
-            }
-            
-            async init() {
-                await this.checkPermissions();
+        
                 this.setupRecognition();
                 this.setupEventListeners();
             }
-            
-            async checkPermissions() {
-                try {
-                    // Check if we have stored permission status
-                    const storedPermission = localStorage.getItem('microphonePermission');
-                    if (storedPermission === 'granted') {
-                        this.permissionGranted = true;
-                        this.updatePermissionStatus();
-                        return;
-                    }
-
-                    // Try to use the Permissions API if available
-                    if (navigator.permissions && navigator.permissions.query) {
-                        const result = await navigator.permissions.query({name: 'microphone'});
-                        this.permissionGranted = result.state === 'granted';
-                        
-                        if (this.permissionGranted) {
-                            localStorage.setItem('microphonePermission', 'granted');
-                        }
-                        
-                        result.addEventListener('change', () => {
-                            this.permissionGranted = result.state === 'granted';
-                            if (this.permissionGranted) {
-                                localStorage.setItem('microphonePermission', 'granted');
-                            } else {
-                                localStorage.removeItem('microphonePermission');
-                            }
-                            this.updatePermissionStatus();
-                        });
-                    } else {
-                        // For Android devices without Permissions API, request permission proactively
-                        await this.requestMicrophonePermission();
-                    }
-                } catch (error) {
-                    console.log('Permission check error:', error);
-                }
-                this.updatePermissionStatus();
-            }
-
-            async requestMicrophonePermission() {
-                try {
-                    // Create a temporary recognition instance to trigger permission request
-                    const tempRecognition = this.createRecognitionInstance();
-                    if (!tempRecognition) return;
-
-                    return new Promise((resolve) => {
-                        tempRecognition.onstart = () => {
-                            this.permissionGranted = true;
-                            localStorage.setItem('microphonePermission', 'granted');
-                            tempRecognition.stop();
-                            resolve(true);
-                        };
-
-                        tempRecognition.onerror = (event) => {
-                            if (event.error === 'not-allowed') {
-                                this.permissionGranted = false;
-                                localStorage.setItem('microphonePermission', 'denied');
-                            }
-                            resolve(false);
-                        };
-
-                        tempRecognition.onend = () => {
-                            resolve(this.permissionGranted);
-                        };
-
-                        tempRecognition.start();
-                    });
-                } catch (error) {
-                    console.log('Error requesting permission:', error);
-                    return false;
-                }
-            }
-            
-            updatePermissionStatus() {
-                const statusSpan = document.getElementById('permissionStatus');
-                if (statusSpan) {
-                    const storedPermission = localStorage.getItem('microphonePermission');
-                    if (this.permissionGranted || storedPermission === 'granted') {
-                        statusSpan.textContent = 'Granted ✅';
-                        statusSpan.style.color = 'green';
-                    } else if (storedPermission === 'denied') {
-                        statusSpan.textContent = 'Denied ❌ (Settings required)';
-                        statusSpan.style.color = 'red';
-                    } else {
-                        statusSpan.textContent = 'Will be requested when needed';
-                        statusSpan.style.color = 'orange';
-                    }
-                }
-            }
-
-            createRecognitionInstance() {
-                if ('webkitSpeechRecognition' in window) {
-                    return new webkitSpeechRecognition();
-                } else if ('SpeechRecognition' in window) {
-                    return new SpeechRecognition();
-                }
-                return null;
-            }
-            
+        
             setupRecognition() {
-                this.recognition = this.createRecognitionInstance();
-                if (!this.recognition) {
-                    this.showMessage('Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.', 'error');
-                    this.button.disabled = true;
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SpeechRecognition) {
+                    this.showMessage('Speech Recognition API не поддерживается вашим браузером.', 'error');
                     return;
                 }
-                
+        
+                this.recognition = new SpeechRecognition();
                 this.recognition.continuous = false;
                 this.recognition.interimResults = true;
-                this.recognition.lang = 'en-US';
-                
+                this.recognition.lang = 'ru-RU';
+        
                 this.recognition.onstart = () => {
                     this.isListening = true;
-                    this.speechBuffer = '';
-                    this.button.textContent = '🔴 Stop';
+                    this.button.textContent = '🛑 Остановить';
                     this.button.classList.add('listening');
-                    this.showMessage('Listening... Speak now!', 'success');
-                    this.permissionGranted = true;
-                    localStorage.setItem('microphonePermission', 'granted');
-                    this.updatePermissionStatus();
+                    this.showMessage('Говорите…', 'success');
                 };
-                
+        
                 this.recognition.onresult = (event) => {
-                    let finalTranscript = '';
-                    for (let i = 0; i < event.results.length; i++) {
-                        if (event.results[i].isFinal) {
-                            finalTranscript += event.results[i][0].transcript;
-                        }
-                    }
-                    
-                    if (finalTranscript) {
-                        this.speechBuffer += finalTranscript;
+                    this.speechBuffer = '';
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        this.speechBuffer += event.results[i][0].transcript;
                     }
                 };
-                
+        
                 this.recognition.onerror = (event) => {
-                    let errorMessage = 'Speech recognition error';
-                    
-                    switch(event.error) {
-                        case 'not-allowed':
-                            this.permissionGranted = false;
-                            localStorage.setItem('microphonePermission', 'denied');
-                            errorMessage = 'Microphone access denied. Please allow microphone access in your browser settings and refresh the page.';
-                            this.updatePermissionStatus();
-                            break;
-                        case 'no-speech':
-                            errorMessage = 'No speech detected. Please try again.';
-                            break;
-                        case 'audio-capture':
-                            errorMessage = 'No microphone found. Please check your microphone.';
-                            break;
-                        case 'network':
-                            errorMessage = 'Network error occurred. Please check your connection.';
-                            break;
-                        default:
-                            errorMessage = `Speech recognition error: ${event.error}`;
+                    console.error('Speech recognition error:', event.error);
+                    if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+                        localStorage.setItem('microphonePermission', 'denied');
+                        this.showMessage('Доступ к микрофону запрещён. Разрешите его в настройках браузера.', 'error');
                     }
-                    
-                    this.showMessage(errorMessage, 'error');
-                    this.stopListening();
                 };
-                
+        
                 this.recognition.onend = () => {
                     if (this.speechBuffer.trim()) {
                         this.insertTextAtCursor(this.speechBuffer);
@@ -314,65 +163,86 @@
                     this.stopListening();
                 };
             }
-            
+        
             setupEventListeners() {
-                this.button.addEventListener('click', () => {
+                this.button.addEventListener('click', async () => {
                     if (this.isListening) {
                         this.recognition.stop();
                     } else {
-                        this.startListening();
+                        await this.startListening();
                     }
                 });
             }
-            
-            startListening() {
-                // Check if permission was previously denied
+        
+            async startListening() {
                 const storedPermission = localStorage.getItem('microphonePermission');
+        
+                // если ранее пользователь запретил
                 if (storedPermission === 'denied') {
-                    this.showMessage('Microphone access was denied. Please enable it in your browser settings and refresh the page.', 'error');
+                    this.showMessage(
+                        'Доступ к микрофону ранее был запрещён. Разрешите его в настройках браузера и обновите страницу.',
+                        'error'
+                    );
                     return;
                 }
-
+        
                 try {
+                    // Проверим актуальное состояние разрешения через Permissions API
+                    const permissionStatus = await navigator.permissions.query({ name: 'microphone' }).catch(() => null);
+        
+                    if (permissionStatus && permissionStatus.state === 'granted') {
+                        localStorage.setItem('microphonePermission', 'granted');
+                        this.recognition.start();
+                        return;
+                    }
+        
+                    // Если ещё не знаем — попросим доступ через getUserMedia
+                    await navigator.mediaDevices.getUserMedia({ audio: true });
+                    localStorage.setItem('microphonePermission', 'granted');
                     this.recognition.start();
                 } catch (error) {
-                    this.showMessage('Could not start speech recognition. Please try again.', 'error');
+                    console.error('Microphone access error:', error);
+                    if (error.name === 'NotAllowedError') {
+                        localStorage.setItem('microphonePermission', 'denied');
+                        this.showMessage(
+                            'Пользователь запретил доступ к микрофону. Разрешите его в настройках браузера.',
+                            'error'
+                        );
+                    } else {
+                        this.showMessage('Ошибка доступа к микрофону. Попробуйте снова.', 'error');
+                    }
                 }
             }
-            
+        
             stopListening() {
                 this.isListening = false;
-                this.button.textContent = '🎤 Start';
+                this.button.textContent = '🎤 Начать';
                 this.button.classList.remove('listening');
                 this.hideMessage();
             }
-            
+        
             insertTextAtCursor(text) {
-                var start = this.textarea.selectionStart;
-                if(!this.textarea.selectionStart){
-                    start = 0;
-                }
-                const end = this.textarea.selectionEnd;
+                let start = this.textarea.selectionStart || 0;
+                const end = this.textarea.selectionEnd || 0;
                 const currentValue = this.textarea.value;
-                
-                var newValue = currentValue.substring(0, start) + ' ' + text + ' ' + currentValue.substring(end);
-                newValue = newValue.replace("  ", " ");
-                newValue = newValue.replace(". .", ".");
+        
+                let newValue = currentValue.substring(0, start) + ' ' + text + ' ' + currentValue.substring(end);
+                newValue = newValue.replace(/\s{2,}/g, ' ').replace('. .', '.');
                 this.textarea.value = newValue;
-                
+        
                 const newCursorPosition = start + text.length + 1;
                 this.textarea.setSelectionRange(newCursorPosition, newCursorPosition);
-                
+        
                 this.textarea.focus();
                 this.textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
-            
+        
             showMessage(message, type) {
                 this.messageDiv.textContent = message;
                 this.messageDiv.className = type === 'error' ? 'error-message' : 'success-message';
                 this.messageDiv.style.display = 'block';
             }
-            
+        
             hideMessage() {
                 this.messageDiv.style.display = 'none';
             }
@@ -380,13 +250,14 @@
         
         document.addEventListener('DOMContentLoaded', () => {
             const textareas = document.querySelectorAll('textarea');
-            textareas.forEach(textarea => {
+            textareas.forEach((textarea) => {
                 new AutoResizeTextarea(textarea);
             });
-            
+        
             new VoiceToText('voiceTextarea', 'voiceBtn', 'voiceMessage');
             new VoiceToText('commentsTextarea', 'voiceBtn2', 'voiceMessage2');
         });
+
     </script>
 </body>
 </html>
