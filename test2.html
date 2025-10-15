@@ -147,40 +147,105 @@
             
             async checkPermissions() {
                 try {
+                    // Check if we have stored permission status
+                    const storedPermission = localStorage.getItem('microphonePermission');
+                    if (storedPermission === 'granted') {
+                        this.permissionGranted = true;
+                        this.updatePermissionStatus();
+                        return;
+                    }
+
+                    // Try to use the Permissions API if available
                     if (navigator.permissions && navigator.permissions.query) {
                         const result = await navigator.permissions.query({name: 'microphone'});
                         this.permissionGranted = result.state === 'granted';
                         
+                        if (this.permissionGranted) {
+                            localStorage.setItem('microphonePermission', 'granted');
+                        }
+                        
                         result.addEventListener('change', () => {
                             this.permissionGranted = result.state === 'granted';
+                            if (this.permissionGranted) {
+                                localStorage.setItem('microphonePermission', 'granted');
+                            } else {
+                                localStorage.removeItem('microphonePermission');
+                            }
                             this.updatePermissionStatus();
                         });
+                    } else {
+                        // For Android devices without Permissions API, request permission proactively
+                        await this.requestMicrophonePermission();
                     }
                 } catch (error) {
-                    console.log('Permission API not available');
+                    console.log('Permission check error:', error);
                 }
                 this.updatePermissionStatus();
+            }
+
+            async requestMicrophonePermission() {
+                try {
+                    // Create a temporary recognition instance to trigger permission request
+                    const tempRecognition = this.createRecognitionInstance();
+                    if (!tempRecognition) return;
+
+                    return new Promise((resolve) => {
+                        tempRecognition.onstart = () => {
+                            this.permissionGranted = true;
+                            localStorage.setItem('microphonePermission', 'granted');
+                            tempRecognition.stop();
+                            resolve(true);
+                        };
+
+                        tempRecognition.onerror = (event) => {
+                            if (event.error === 'not-allowed') {
+                                this.permissionGranted = false;
+                                localStorage.setItem('microphonePermission', 'denied');
+                            }
+                            resolve(false);
+                        };
+
+                        tempRecognition.onend = () => {
+                            resolve(this.permissionGranted);
+                        };
+
+                        tempRecognition.start();
+                    });
+                } catch (error) {
+                    console.log('Error requesting permission:', error);
+                    return false;
+                }
             }
             
             updatePermissionStatus() {
                 const statusSpan = document.getElementById('permissionStatus');
                 if (statusSpan) {
-                    if (this.permissionGranted) {
+                    const storedPermission = localStorage.getItem('microphonePermission');
+                    if (this.permissionGranted || storedPermission === 'granted') {
                         statusSpan.textContent = 'Granted ✅';
                         statusSpan.style.color = 'green';
+                    } else if (storedPermission === 'denied') {
+                        statusSpan.textContent = 'Denied ❌ (Settings required)';
+                        statusSpan.style.color = 'red';
                     } else {
                         statusSpan.textContent = 'Will be requested when needed';
                         statusSpan.style.color = 'orange';
                     }
                 }
             }
+
+            createRecognitionInstance() {
+                if ('webkitSpeechRecognition' in window) {
+                    return new webkitSpeechRecognition();
+                } else if ('SpeechRecognition' in window) {
+                    return new SpeechRecognition();
+                }
+                return null;
+            }
             
             setupRecognition() {
-                if ('webkitSpeechRecognition' in window) {
-                    this.recognition = new webkitSpeechRecognition();
-                } else if ('SpeechRecognition' in window) {
-                    this.recognition = new SpeechRecognition();
-                } else {
+                this.recognition = this.createRecognitionInstance();
+                if (!this.recognition) {
                     this.showMessage('Speech recognition not supported in this browser. Please use Chrome, Edge, or Safari.', 'error');
                     this.button.disabled = true;
                     return;
@@ -197,6 +262,7 @@
                     this.button.classList.add('listening');
                     this.showMessage('Listening... Speak now!', 'success');
                     this.permissionGranted = true;
+                    localStorage.setItem('microphonePermission', 'granted');
                     this.updatePermissionStatus();
                 };
                 
@@ -218,7 +284,10 @@
                     
                     switch(event.error) {
                         case 'not-allowed':
-                            errorMessage = 'Microphone access denied. Please allow microphone access and try again.';
+                            this.permissionGranted = false;
+                            localStorage.setItem('microphonePermission', 'denied');
+                            errorMessage = 'Microphone access denied. Please allow microphone access in your browser settings and refresh the page.';
+                            this.updatePermissionStatus();
                             break;
                         case 'no-speech':
                             errorMessage = 'No speech detected. Please try again.';
@@ -257,6 +326,13 @@
             }
             
             startListening() {
+                // Check if permission was previously denied
+                const storedPermission = localStorage.getItem('microphonePermission');
+                if (storedPermission === 'denied') {
+                    this.showMessage('Microphone access was denied. Please enable it in your browser settings and refresh the page.', 'error');
+                    return;
+                }
+
                 try {
                     this.recognition.start();
                 } catch (error) {
