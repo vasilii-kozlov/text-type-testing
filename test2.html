@@ -278,6 +278,7 @@
                 
                 var newValue = currentValue.substring(0, start) + ' ' + text + ' ' + currentValue.substring(end);
                 newValue = newValue.replace("  ", " ");
+                newValue = newValue.replace(". .", ".");
                 this.textarea.value = newValue;
                 
                 const newCursorPosition = start + text.length;
