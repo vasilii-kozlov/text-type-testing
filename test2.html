@@ -348,7 +348,10 @@
             }
             
             insertTextAtCursor(text) {
-                const start = this.textarea.selectionStart;
+                var start = this.textarea.selectionStart;
+                if(!this.textarea.selectionStart){
+                    start = 0;
+                }
                 const end = this.textarea.selectionEnd;
                 const currentValue = this.textarea.value;
                 
@@ -357,7 +360,7 @@
                 newValue = newValue.replace(". .", ".");
                 this.textarea.value = newValue;
                 
-                const newCursorPosition = start + text.length;
+                const newCursorPosition = start + text.length + 1;
                 this.textarea.setSelectionRange(newCursorPosition, newCursorPosition);
                 
                 this.textarea.focus();
