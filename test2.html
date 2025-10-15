@@ -12,77 +12,27 @@
             padding: 20px;
             line-height: 1.6;
         }
-        .field-container {
-            margin-bottom: 30px;
-        }
-        .field-header {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 10px;
-            color: #333;
-        }
+        .field-container { margin-bottom: 30px; }
+        .field-header { font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #333; }
         textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            box-sizing: border-box;
-            resize: none;
-            min-height: 60px;
-            overflow: hidden;
+            width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;
+            font-size: 14px; box-sizing: border-box; resize: none; min-height: 60px; overflow: hidden;
         }
-        .voice-container {
-            display: flex;
-            gap: 10px;
-            align-items: flex-start;
-        }
-        .voice-container textarea {
-            flex: 1;
-        }
+        .voice-container { display: flex; gap: 10px; align-items: flex-start; }
+        .voice-container textarea { flex: 1; }
         .voice-btn {
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            min-height: 42px;
-            white-space: nowrap;
+            background-color: #4CAF50; color: white; border: none; padding: 10px 15px;
+            border-radius: 4px; cursor: pointer; font-size: 14px; min-height: 42px; white-space: nowrap;
         }
-        .voice-btn:hover {
-            background-color: #45a049;
-        }
-        .voice-btn:disabled {
-            background-color: #cccccc;
-            cursor: not-allowed;
-        }
-        .voice-btn.listening {
-            background-color: #ff4444;
-            animation: pulse 1s infinite;
-        }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.7; }
-            100% { opacity: 1; }
-        }
-        .error-message {
-            color: red;
-            font-size: 12px;
-            margin-top: 5px;
-        }
-        .success-message {
-            color: green;
-            font-size: 12px;
-            margin-top: 5px;
-        }
+        .voice-btn:hover { background-color: #45a049; }
+        .voice-btn:disabled { background-color: #cccccc; cursor: not-allowed; }
+        .voice-btn.listening { background-color: #ff4444; animation: pulse 1s infinite; }
+        @keyframes pulse { 0%{opacity:1;} 50%{opacity:.7;} 100%{opacity:1;} }
+        .error-message { color: red; font-size: 12px; margin-top: 5px; }
+        .success-message { color: green; font-size: 12px; margin-top: 5px; }
         .permission-info {
-            background-color: #e3f2fd;
-            padding: 10px;
-            border-radius: 4px;
-            margin-bottom: 20px;
-            font-size: 14px;
+            background-color: #e3f2fd; padding: 10px; border-radius: 4px;
+            margin-bottom: 20px; font-size: 14px;
         }
     </style>
 </head>
@@ -92,11 +42,6 @@
     <div class="permission-info">
         <strong>🎤 Microphone Permission:</strong> 
         <span id="permissionStatus">Checking...</span>
-    </div>
-    
-    <div class="field-container">
-        <div class="field-header">Standard Textarea</div>
-        <textarea id="standardTextarea" placeholder="Type your text here..."></textarea>
     </div>
 
     <div class="field-container">
@@ -109,79 +54,152 @@
     </div>
 
     <script>
-        
         class AutoResizeTextarea {
             constructor(textarea) {
                 this.textarea = textarea;
                 this.init();
             }
-            
             init() {
                 this.textarea.addEventListener('input', () => this.resize());
                 this.resize();
             }
-            
             resize() {
                 this.textarea.style.height = 'auto';
                 this.textarea.style.height = Math.max(60, this.textarea.scrollHeight) + 'px';
             }
         }
-        
+
         class VoiceToText {
             constructor(textareaId, buttonId, messageId) {
                 this.textarea = document.getElementById(textareaId);
                 this.button = document.getElementById(buttonId);
                 this.messageDiv = document.getElementById(messageId);
+                this.recognition = null;
                 this.isListening = false;
                 this.speechBuffer = '';
-        
+                this.permissionGranted = false;
+
+                this.init();
+            }
+
+            async init() {
+                await this.checkPermissions();
                 this.setupRecognition();
                 this.setupEventListeners();
             }
-        
+
+            async checkPermissions() {
+                try {
+                    const stored = localStorage.getItem('microphonePermission');
+                    if (stored === 'granted') {
+                        this.permissionGranted = true;
+                        this.updatePermissionStatus();
+                        return;
+                    }
+
+                    if (navigator.permissions && navigator.permissions.query) {
+                        const result = await navigator.permissions.query({ name: 'microphone' });
+                        if (result.state === 'granted') {
+                            this.permissionGranted = true;
+                            localStorage.setItem('microphonePermission', 'granted');
+                        }
+                        result.addEventListener('change', () => {
+                            this.permissionGranted = result.state === 'granted';
+                            if (this.permissionGranted) {
+                                localStorage.setItem('microphonePermission', 'granted');
+                            } else {
+                                localStorage.removeItem('microphonePermission');
+                            }
+                            this.updatePermissionStatus();
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Permission API check failed:', e);
+                }
+                this.updatePermissionStatus();
+            }
+
+            async requestMicrophonePermission() {
+                try {
+                    await navigator.mediaDevices.getUserMedia({ audio: true });
+                    this.permissionGranted = true;
+                    localStorage.setItem('microphonePermission', 'granted');
+                    this.updatePermissionStatus();
+                    return true;
+                } catch (error) {
+                    console.error('Microphone request error:', error);
+                    this.permissionGranted = false;
+                    localStorage.setItem('microphonePermission', 'denied');
+                    this.updatePermissionStatus();
+                    return false;
+                }
+            }
+
+            updatePermissionStatus() {
+                const statusSpan = document.getElementById('permissionStatus');
+                const stored = localStorage.getItem('microphonePermission');
+                if (this.permissionGranted || stored === 'granted') {
+                    statusSpan.textContent = 'Granted ✅';
+                    statusSpan.style.color = 'green';
+                } else if (stored === 'denied') {
+                    statusSpan.textContent = 'Denied ❌ (Settings required)';
+                    statusSpan.style.color = 'red';
+                } else {
+                    statusSpan.textContent = 'Will be requested when needed';
+                    statusSpan.style.color = 'orange';
+                }
+            }
+
             setupRecognition() {
                 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
                 if (!SpeechRecognition) {
-                    this.showMessage('Speech Recognition API не поддерживается вашим браузером.', 'error');
+                    this.showMessage('Speech Recognition API not supported. Use Chrome or Edge.', 'error');
+                    this.button.disabled = true;
                     return;
                 }
-        
+
                 this.recognition = new SpeechRecognition();
                 this.recognition.continuous = false;
                 this.recognition.interimResults = true;
-                this.recognition.lang = 'ru-RU';
-        
+                this.recognition.lang = 'en-US';
+
                 this.recognition.onstart = () => {
                     this.isListening = true;
-                    this.button.textContent = '🛑 Остановить';
+                    this.button.textContent = '🛑 Stop';
                     this.button.classList.add('listening');
-                    this.showMessage('Говорите…', 'success');
+                    this.showMessage('Listening... Speak now!', 'success');
                 };
-        
+
                 this.recognition.onresult = (event) => {
-                    this.speechBuffer = '';
+                    let finalTranscript = '';
                     for (let i = event.resultIndex; i < event.results.length; ++i) {
-                        this.speechBuffer += event.results[i][0].transcript;
+                        finalTranscript += event.results[i][0].transcript;
                     }
+                    this.speechBuffer += finalTranscript;
                 };
-        
+
                 this.recognition.onerror = (event) => {
                     console.error('Speech recognition error:', event.error);
-                    if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+                    if (event.error === 'not-allowed') {
+                        this.permissionGranted = false;
                         localStorage.setItem('microphonePermission', 'denied');
-                        this.showMessage('Доступ к микрофону запрещён. Разрешите его в настройках браузера.', 'error');
+                        this.updatePermissionStatus();
+                        this.showMessage('Microphone access denied. Please enable it in browser settings.', 'error');
+                    } else if (event.error !== 'no-speech') {
+                        this.showMessage(`Recognition error: ${event.error}`, 'error');
                     }
+                    this.stopListening();
                 };
-        
+
                 this.recognition.onend = () => {
                     if (this.speechBuffer.trim()) {
-                        this.insertTextAtCursor(this.speechBuffer);
+                        this.insertTextAtCursor(this.speechBuffer.trim());
                         this.speechBuffer = '';
                     }
                     this.stopListening();
                 };
             }
-        
+
             setupEventListeners() {
                 this.button.addEventListener('click', async () => {
                     if (this.isListening) {
@@ -191,90 +209,63 @@
                     }
                 });
             }
-        
+
             async startListening() {
                 const storedPermission = localStorage.getItem('microphonePermission');
-        
-                // если ранее пользователь запретил
+
                 if (storedPermission === 'denied') {
-                    this.showMessage(
-                        'Доступ к микрофону ранее был запрещён. Разрешите его в настройках браузера и обновите страницу.',
-                        'error'
-                    );
+                    this.showMessage('Microphone access denied. Please enable it in settings and refresh.', 'error');
                     return;
                 }
-        
+
+                // if not yet granted, request first time
+                if (!this.permissionGranted && storedPermission !== 'granted') {
+                    const ok = await this.requestMicrophonePermission();
+                    if (!ok) return;
+                }
+
                 try {
-                    // Проверим актуальное состояние разрешения через Permissions API
-                    const permissionStatus = await navigator.permissions.query({ name: 'microphone' }).catch(() => null);
-        
-                    if (permissionStatus && permissionStatus.state === 'granted') {
-                        localStorage.setItem('microphonePermission', 'granted');
-                        this.recognition.start();
-                        return;
-                    }
-        
-                    // Если ещё не знаем — попросим доступ через getUserMedia
-                    await navigator.mediaDevices.getUserMedia({ audio: true });
-                    localStorage.setItem('microphonePermission', 'granted');
                     this.recognition.start();
-                } catch (error) {
-                    console.error('Microphone access error:', error);
-                    if (error.name === 'NotAllowedError') {
-                        localStorage.setItem('microphonePermission', 'denied');
-                        this.showMessage(
-                            'Пользователь запретил доступ к микрофону. Разрешите его в настройках браузера.',
-                            'error'
-                        );
-                    } else {
-                        this.showMessage('Ошибка доступа к микрофону. Попробуйте снова.', 'error');
-                    }
+                } catch (err) {
+                    console.error('Recognition start error:', err);
+                    this.showMessage('Could not start speech recognition.', 'error');
                 }
             }
-        
+
             stopListening() {
                 this.isListening = false;
-                this.button.textContent = '🎤 Начать';
+                this.button.textContent = '🎤 Start';
                 this.button.classList.remove('listening');
                 this.hideMessage();
             }
-        
+
             insertTextAtCursor(text) {
-                let start = this.textarea.selectionStart || 0;
+                const start = this.textarea.selectionStart || 0;
                 const end = this.textarea.selectionEnd || 0;
                 const currentValue = this.textarea.value;
-        
-                let newValue = currentValue.substring(0, start) + ' ' + text + ' ' + currentValue.substring(end);
-                newValue = newValue.replace(/\s{2,}/g, ' ').replace('. .', '.');
-                this.textarea.value = newValue;
-        
-                const newCursorPosition = start + text.length + 1;
-                this.textarea.setSelectionRange(newCursorPosition, newCursorPosition);
-        
+                const newValue = currentValue.substring(0, start) + ' ' + text + ' ' + currentValue.substring(end);
+                this.textarea.value = newValue.replace(/\s{2,}/g, ' ');
+                const newPos = start + text.length + 1;
+                this.textarea.setSelectionRange(newPos, newPos);
                 this.textarea.focus();
                 this.textarea.dispatchEvent(new Event('input', { bubbles: true }));
             }
-        
+
             showMessage(message, type) {
                 this.messageDiv.textContent = message;
                 this.messageDiv.className = type === 'error' ? 'error-message' : 'success-message';
                 this.messageDiv.style.display = 'block';
             }
-        
+
             hideMessage() {
                 this.messageDiv.style.display = 'none';
             }
         }
-        
+
         document.addEventListener('DOMContentLoaded', () => {
-            const textareas = document.querySelectorAll('textarea');
-            textareas.forEach((textarea) => {
-                new AutoResizeTextarea(textarea);
-            });
-        
+            document.querySelectorAll('textarea').forEach(t => new AutoResizeTextarea(t));
             new VoiceToText('commentsTextarea', 'voiceBtn2', 'voiceMessage2');
         });
-
     </script>
 </body>
 </html>
